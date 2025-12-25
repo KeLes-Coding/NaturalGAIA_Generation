@@ -15,7 +15,11 @@ This repository contains the generation pipeline for **NaturalGAIA**, an agentic
 │   ├── llm_client.py    # LLM API client (Multi-provider support)
 │   └── utils.py         # Utilities (Logger, etc.)
 ├── visualization/       # Interactive visualization GUI
-│   └── app.py           # Streamlit application for task & graph exploration
+│   ├── app.py           # Main Streamlit application
+│   ├── theme.py         # UI theme and CSS styling
+│   ├── utils.py         # Visualization utilities (data loading)
+│   ├── task_view.py     # Task analysis panel
+│   └── graph_view.py    # Graph exploration panel
 ├── data/                # Generated datasets (Graphs & Tasks)
 ├── logs/                # Runtime logs
 └── main.py              # Entry point
@@ -56,18 +60,33 @@ streamlit run visualization/app.py
 ```
 
 **Features:**
+
+- **Cold Start Mode**
+  - On-the-fly data generation from Wikidata when no data exists
+  - Configurable seed entity, node count, and task count
+  - Real-time progress tracking with status updates
+
 - **Task Analysis Panel**
-  - Browse and search through generated tasks
+  - Browse and search through generated tasks with keyword filtering
   - View refined natural language queries and ground truth answers
-  - Inspect multi-hop reasoning chains with an interactive timeline
-  - Filter tasks by complexity and path length
+  - Inspect multi-hop reasoning chains with an interactive vertical timeline
+  - Domain-based color coding (Multimedia/GeoTravel/Knowledge/Personal)
+  - Raw JSON data inspection for debugging
 
 - **Graph Exploration Panel**
   - Interactive knowledge graph visualization with force-directed layout
-  - Node degree-based color coding (Red=Hub, Yellow=Bridge, Blue=Leaf)
+  - Hierarchical tree layout option for structured viewing
+  - Smart color coding by domain and node connectivity
   - Click-to-inspect node details and connections
-  - Adjustable node limit for performance tuning
-  - Physics-based stabilization for smooth interaction
+  - **Related Tasks Discovery**: Automatically finds and displays tasks involving selected entities
+  - Distinguishes between refined (with natural language queries) and raw (logical path only) tasks
+  - Adjustable node limit and label visibility for performance tuning
+  - Interactive legend with domain and hub node indicators
+
+- **Professional UI Design**
+  - Dark academic theme with glass-morphism cards
+  - Modular architecture for easy customization
+  - Responsive layout with optimized space utilization
 
 ### 📦 Dependency Management
 
@@ -96,7 +115,10 @@ pip freeze > requirements.txt
 - **Graph Processing:** NetworkX
 - **LLM Integration:** OpenAI SDK / HTTPX
 - **Concurrency:** ThreadPoolExecutor
-- **Visualization:** Streamlit + Streamlit-Agraph
+- **Visualization:**
+  - Streamlit (Web Framework)
+  - Streamlit-Agraph (Interactive Graphs)
+  - NetworkX (Graph Algorithms)
 
 ## 📄 License
 MIT License
