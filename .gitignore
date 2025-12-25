@@ -1,0 +1,30 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables & Secrets
+.env
+config/llm_config.yaml
+# 注意：我们忽略了真实的配置文件，但保留 example 文件（如果有）
+
+# Logs
+logs/
+*.log
+
+# Data (只保留目录结构，不上传具体的 JSON 数据，因为数据可能很大)
+data/graphs/*.json
+data/tasks/*.json
+data/tasks/raw/*.json
+data/tasks/refined/*.json
+data/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Virtual Environment
+venv/
+env/
+
+wikidata/

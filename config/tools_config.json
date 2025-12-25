@@ -1,0 +1,38 @@
+{
+  "domains": {
+    "Multimedia": {
+      "apps": ["Spotify", "Apple Music", "IMDb"],
+      "tools": {
+        "P175": {"name": "get_artist_by_track", "app": "Spotify", "desc": "Find the artist of a song"},
+        "P361": {"name": "get_album_of_track", "app": "Apple Music", "desc": "Find the album containing this track"},
+        "P136": {"name": "get_genre", "app": "Spotify", "desc": "Get the music genre"},
+        "P57":  {"name": "get_director", "app": "IMDb", "desc": "Find the director of a movie"},
+        "P161": {"name": "get_cast_member", "app": "IMDb", "desc": "Find actors in a movie"},
+        "P86":  {"name": "get_composer", "app": "Apple Music", "desc": "Find the composer"}
+      }
+    },
+    "GeoTravel": {
+      "apps": ["Google Maps", "Amap"],
+      "tools": {
+        "P19":  {"name": "get_birth_place", "app": "Google Maps", "desc": "Find where a person was born"},
+        "P36":  {"name": "get_capital", "app": "Google Maps", "desc": "Find the capital of a country"},
+        "P131": {"name": "get_admin_location", "app": "Amap", "desc": "Find the province/state of a city"},
+        "P150": {"name": "get_sub_division", "app": "Amap", "desc": "Find sub-districts within a region"},
+        "P625": {"name": "get_coordinates", "app": "Google Maps", "desc": "Get GPS coordinates"}
+      }
+    },
+    "Knowledge": {
+      "apps": ["Chrome", "Wikipedia"],
+      "tools": {
+        "P569": {"name": "get_birth_date", "app": "Wikipedia", "desc": "Find birth date"},
+        "P577": {"name": "get_publication_date", "app": "Chrome", "desc": "Find when a work was published"},
+        "P26":  {"name": "get_spouse", "app": "Chrome", "desc": "Find the spouse of a person"},
+        "P463": {"name": "get_member_of", "app": "Wikipedia", "desc": "Find organizations this person belongs to"}
+      }
+    },
+    "Personal": {
+      "apps": ["Calendar", "Contacts", "Messages"],
+      "note": "These are usually sink nodes (targets) based on dates or people found in other steps."
+    }
+  }
+}
