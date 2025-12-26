@@ -16,7 +16,7 @@ class LLMClient:
             self.api_key = os.getenv("OPENAI_API_KEY")
             self.base_url = os.getenv(
                 "OPENAI_BASE_URL",
-                "[https://api.openai.com/v1](https://api.openai.com/v1)",
+                "https://api.openai.com/v1",
             )
             self.model = "gpt-3.5-turbo"
             self.concurrency = 3
@@ -36,7 +36,6 @@ class LLMClient:
         http_client = None
         if self.proxy:
             logger.info(f"Using Proxy: {self.proxy}")
-            # 增加超时设置，防止代理慢导致报错
             http_client = httpx.Client(proxy=self.proxy, timeout=60.0)
         else:
             http_client = httpx.Client(timeout=60.0)
@@ -64,7 +63,6 @@ class LLMClient:
                 executor.submit(self._process_single, t): t for t in tasks
             }
 
-            # 使用 tqdm 并在出错时打印
             for future in tqdm(
                 as_completed(future_to_task), total=len(tasks), desc="LLM Refining"
             ):
@@ -72,7 +70,7 @@ class LLMClient:
                     res = future.result()
                     results.append(res)
                 except Exception as e:
-                    tqdm.write(f"Critical Worker Error: {e}")  # 直接打印到控制台
+                    logger.error(f"Critical Worker Error: {e}")
 
         success_tasks = [t for t in results if t.get("refined_query")]
 
@@ -83,73 +81,138 @@ class LLMClient:
         logger.info(f"Saved {len(success_tasks)} refined tasks to {output_file}")
         if len(success_tasks) == 0:
             logger.warning(
-                "No tasks were saved! Check the console logs above for API errors."
+                "No tasks were saved! PLEASE CHECK THE LOG FILE (logs/run_xxx.log) FOR DETAILS."
             )
 
     def _process_single(self, task):
+        """处理单个任务，包含详细的 Debug 日志"""
         if "refined_query" in task:
             return task
 
-        system_msg = "You are an AI dataset creator. Convert the logical path into a natural user query. Output ONLY JSON."
-        steps_str = " -> ".join(
-            [f"[{s['domain']}] Find {s['to']}" for s in task["ground_truth"]["path"]]
+        # --- 1. 构建 Prompt ---
+        start_entity = task["input_prompt_skeleton"]["start"]
+        # 收集所有必须被“隐藏”的实体（中间节点 + 最终答案）
+        forbidden_entities = []
+        path_desc = []
+
+        for idx, step in enumerate(task["ground_truth"]["path"]):
+            target = step["to"]
+            forbidden_entities.append(target)
+            intent = (
+                step.get("tool", "")
+                .replace("get_", "")
+                .replace("search_", "")
+                .replace("_", " ")
+            )
+            path_desc.append(
+                f"Step {idx+1}: Use App '{step.get('app')}' to find '{target}' (Intent: {intent})."
+            )
+
+        path_str = "\n".join(path_desc)
+        forbidden_str = ", ".join([f"'{e}'" for e in forbidden_entities])
+
+        system_msg = (
+            "You are a user constructing a complex, multi-step instruction for a GUI Agent. "
+            "Output ONLY JSON object."
         )
 
         user_msg = f"""
-        Goal: Find "{task['ground_truth']['final_answer']}" starting from "{task['input_prompt_skeleton']['start']}".
-        Logical Path: {steps_str}
-        
-        Task: Write a natural question asking for this information without revealing the steps explicitly.
-        Output Format: JSON with key "natural_query".
-        Example: {{"natural_query": "Which city was the director of 'Inception' born in?"}}
+        **Mission**: Generate a "Stream of Consciousness" style user query.
+
+        **Input**:
+        Start: "{start_entity}"
+        Path:
+        {path_str}
+
+        **RULES**:
+        1. **NO SPOILERS**: DO NOT mention these targets: [{forbidden_str}]. Use "that city", "the year", etc.
+        2. **NARRATIVE**: Write a flow of thoughts (Motivation -> Action 1 -> Action 2).
+        3. **FORMAT**: Return JSON with key "natural_query".
+
+        **Example**:
+        {{ "natural_query": "I am looking for... please use Spotify to..." }}
         """
 
         retries = 3
         for attempt in range(retries):
             try:
-                # 注意：有些第三方 API 不完全支持 response_format={"type": "json_object"}
-                # 如果依然报错，可以尝试把这一行删掉
+                # 注意：移除了 response_format 以防止 400 错误，靠 _clean_json_string 处理
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
                         {"role": "system", "content": system_msg},
                         {"role": "user", "content": user_msg},
                     ],
-                    response_format={"type": "json_object"},
-                    temperature=0.7,
+                    temperature=0.8,
                 )
                 content = response.choices[0].message.content
 
-                # --- 增强的 JSON 清洗与解析 ---
+                # --- 清洗与解析 ---
                 cleaned_content = self._clean_json_string(content)
 
                 try:
                     parsed_json = json.loads(cleaned_content)
-                    task["refined_query"] = parsed_json.get("natural_query", "")
+                    query = parsed_json.get("natural_query", "")
+
+                    if not query:
+                        raise ValueError("Empty query generated")
+
+                    # 检查是否泄露答案 (简单检查)
+                    for forbidden in forbidden_entities:
+                        if forbidden.lower() in query.lower():
+                            logger.warning(
+                                f"[Task {task.get('task_id')}] Retry: Leaked answer '{forbidden}'"
+                            )
+                            raise ValueError(f"Leaked answer: {forbidden}")
+
+                    task["refined_query"] = query
                     return task
+
                 except json.JSONDecodeError:
-                    tqdm.write(
-                        f"JSON Parse Error for Task {task.get('task_id')}: {content[:100]}..."
+                    logger.error(
+                        f"[Task {task.get('task_id')}] JSON Fail (Attempt {attempt+1})"
                     )
-                    # 只有解析失败才重试
+                    logger.error(
+                        f"   >>> Raw Content: {content[:500]}..."
+                    )  # 打印前500字符
+                    logger.error(f"   >>> Cleaned: {cleaned_content}")
+                    continue
+                except ValueError as ve:
+                    # 捕获逻辑校验错误（如泄露答案）
                     continue
 
             except Exception as e:
-                tqdm.write(f"API Error (Attempt {attempt+1}): {e}")
-                time.sleep(2)
+                logger.error(
+                    f"[Task {task.get('task_id')}] API/Net Error (Attempt {attempt+1}): {e}"
+                )
+                time.sleep(1)
 
         task["refined_query"] = None
         return task
 
     def _clean_json_string(self, content):
         """
-        清洗 LLM 返回的字符串，去除 Markdown 代码块标记
-        例如: ```json { "key": "value" } ``` -> { "key": "value" }
+        强力清洗：
+        1. 去除 <think>...</think> 标签 (DeepSeek 特性)
+        2. 去除 ```json 代码块
+        3. 寻找最外层 {}
         """
         content = content.strip()
-        # 使用正则去除 ```json 和 ```
-        pattern = r"^```(?:json)?\s*(.*?)\s*```$"
+
+        # 1. 去除 DeepSeek 的 <think> 标签
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+
+        # 2. 去除 Markdown 代码块
+        pattern = r"```(?:json)?\s*(.*?)\s*```"
         match = re.search(pattern, content, re.DOTALL)
         if match:
-            return match.group(1)
+            content = match.group(1).strip()
+
+        # 3. 寻找 JSON 对象边界
+        start = content.find("{")
+        end = content.rfind("}")
+
+        if start != -1 and end != -1 and end > start:
+            return content[start : end + 1]
+
         return content
