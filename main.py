@@ -72,14 +72,14 @@ def main():
     tasks, task_file = generator.generate_tasks(G, total_paths=args.tasks)
 
     # 3. LLM 润色 (可选)
-    if not args.skip_llm:
-        logger.info("Starting LLM Refinement...")
-        # 修正：传入 config_path 参数
-        llm_client = LLMClient(config_path=llm_config_path)
-        refined_file = os.path.join("data", "tasks", f"tasks_{args.seed}_refined.json")
-        llm_client.paraphrase_tasks(task_file, refined_file)
-    else:
-        logger.info("Skipping LLM refinement.")
+    # if not args.skip_llm:
+    #     logger.info("Starting LLM Refinement...")
+    #     # 修正：传入 config_path 参数
+    #     llm_client = LLMClient(config_path=llm_config_path)
+    #     refined_file = os.path.join("data", "tasks", f"tasks_{args.seed}_refined.json")
+    #     llm_client.paraphrase_tasks(task_file, refined_file)
+    # else:
+    #     logger.info("Skipping LLM refinement.")
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ data/tasks/*.json
 data/tasks/raw/*.json
 data/tasks/refined/*.json
 data/
+data*
 
 # IDE settings
 .vscode/

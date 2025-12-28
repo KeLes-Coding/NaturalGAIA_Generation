@@ -1,38 +1,111 @@
 {
   "domains": {
     "Multimedia": {
-      "apps": ["Spotify", "Apple Music", "IMDb"],
-      "tools": {
-        "P175": {"name": "get_artist_by_track", "app": "Spotify", "desc": "Find the artist of a song"},
-        "P361": {"name": "get_album_of_track", "app": "Apple Music", "desc": "Find the album containing this track"},
-        "P136": {"name": "get_genre", "app": "Spotify", "desc": "Get the music genre"},
-        "P57":  {"name": "get_director", "app": "IMDb", "desc": "Find the director of a movie"},
-        "P161": {"name": "get_cast_member", "app": "IMDb", "desc": "Find actors in a movie"},
-        "P86":  {"name": "get_composer", "app": "Apple Music", "desc": "Find the composer"}
+      "apps": {
+        "Spotify": {
+          "description": "Music streaming.",
+          "entities": {
+            "Track": {
+              "constraints": ["P175", "P361", "P2047", "P577"],
+              "actions": {
+                "click_artist": {"target": "Artist", "relation": "P175", "desc": "Click artist name", "intent": "find the performing artist"},
+                "click_album": {"target": "Album", "relation": "P361", "desc": "Click album cover", "intent": "find the source album"}
+              }
+            },
+            "Artist": {
+              "constraints": ["P136"], 
+              "actions": {
+                "pick_album": {"target": "Album", "relation": "reverse_P175_then_P361", "desc": "Select album", "intent": "find an album by this artist"},
+                "pick_top_track": {"target": "Track", "relation": "reverse_P175", "desc": "Play top song", "intent": "find a popular track"},
+                "related_artists": {"target": "Artist", "relation": "P1659", "desc": "Check 'Fans Also Like'", "intent": "discover a similar artist"}
+              }
+            },
+            "Album": {
+              "constraints": ["P577", "P264"],
+              "actions": {
+                "pick_track": {"target": "Track", "relation": "reverse_P361", "desc": "Select song", "intent": "find a track in this album"}
+              }
+            }
+          }
+        },
+        "IMDb": {
+          "description": "Movies database.",
+          "entities": {
+            "Movie": {
+              "constraints": ["P577", "P136", "P57"],
+              "actions": {
+                "click_director": {"target": "Person", "relation": "P57", "desc": "Click director", "intent": "find the director"},
+                "click_cast": {"target": "Person", "relation": "P161", "desc": "Click cast", "intent": "find a cast member"},
+                "click_composer": {"target": "Person", "relation": "P86", "desc": "Click composer", "intent": "find the composer"}
+              }
+            },
+            "Person": {
+              "constraints": ["P569", "P19"],
+              "actions": {
+                "filmography": {"target": "Movie", "relation": "reverse_P161", "desc": "Check Filmography", "intent": "find a movie they acted in"}
+              }
+            }
+          }
+        }
       }
     },
     "GeoTravel": {
-      "apps": ["Google Maps", "Amap"],
-      "tools": {
-        "P19":  {"name": "get_birth_place", "app": "Google Maps", "desc": "Find where a person was born"},
-        "P36":  {"name": "get_capital", "app": "Google Maps", "desc": "Find the capital of a country"},
-        "P131": {"name": "get_admin_location", "app": "Amap", "desc": "Find the province/state of a city"},
-        "P150": {"name": "get_sub_division", "app": "Amap", "desc": "Find sub-districts within a region"},
-        "P625": {"name": "get_coordinates", "app": "Google Maps", "desc": "Get GPS coordinates"}
+      "apps": {
+        "Google Maps": {
+          "description": "Map navigation.",
+          "entities": {
+            "Place": {
+              "constraints": ["P625", "P1082"], 
+              "actions": {
+                "zoom_out_parent": {"target": "Place", "relation": "P131", "desc": "Check 'Located in'", "intent": "find the parent region"},
+                "zoom_in_child": {"target": "Place", "relation": "P150", "desc": "Search sub-districts", "intent": "find a sub-district"},
+                "neighboring_place": {"target": "Place", "relation": "P47", "desc": "Pan to border", "intent": "find a neighboring place"},
+                "capital_city": {"target": "Place", "relation": "P36", "desc": "Click capital", "intent": "find the capital city"},
+                "is_capital_of": {"target": "Place", "relation": "reverse_P36", "desc": "Identify country", "intent": "identify the country it serves as capital"}
+              }
+            }
+          }
+        }
       }
     },
     "Knowledge": {
-      "apps": ["Chrome", "Wikipedia"],
-      "tools": {
-        "P569": {"name": "get_birth_date", "app": "Wikipedia", "desc": "Find birth date"},
-        "P577": {"name": "get_publication_date", "app": "Chrome", "desc": "Find when a work was published"},
-        "P26":  {"name": "get_spouse", "app": "Chrome", "desc": "Find the spouse of a person"},
-        "P463": {"name": "get_member_of", "app": "Wikipedia", "desc": "Find organizations this person belongs to"}
+      "apps": {
+        "Wikipedia": {
+          "description": "Knowledge Hub. Connects everything.",
+          "entities": {
+            "Person": {
+              "constraints": ["P569", "P570", "P27", "P26", "P22", "P25"],
+              "actions": {
+                "birth_place_link": {"target": "Place", "relation": "P19", "desc": "Click Birth Place", "intent": "find the place of birth"},
+                "educated_at": {"target": "Organization", "relation": "P69", "desc": "Click Education", "intent": "find the university"},
+                "spouse": {"target": "Person", "relation": "P26", "desc": "Click Spouse", "intent": "identify the spouse"},
+                "father": {"target": "Person", "relation": "P22", "desc": "Click Father", "intent": "identify the father"},
+                "mother": {"target": "Person", "relation": "P25", "desc": "Click Mother", "intent": "identify the mother"},
+                "award_received": {"target": "Award", "relation": "P166", "desc": "Click Award", "intent": "find an award they received"}
+              }
+            },
+            "Organization": {
+              "constraints": ["P571", "P159"],
+              "actions": {
+                "headquarters_loc": {"target": "Place", "relation": "P159", "desc": "Click Headquarters", "intent": "locate the headquarters"},
+                "founded_by": {"target": "Person", "relation": "P112", "desc": "Click Founder", "intent": "identify the founder"}
+              }
+            },
+            "Place": {
+              "constraints": ["P17", "P1082"],
+              "actions": {
+                "famous_people_born": {"target": "Person", "relation": "reverse_P19", "desc": "People from here", "intent": "find a famous person born here"}
+              }
+            },
+            "Award": {
+              "constraints": ["P585"],
+              "actions": {
+                "winner": {"target": "Person", "relation": "reverse_P166", "desc": "See winners", "intent": "find a winner of this award"}
+              }
+            }
+          }
+        }
       }
-    },
-    "Personal": {
-      "apps": ["Calendar", "Contacts", "Messages"],
-      "note": "These are usually sink nodes (targets) based on dates or people found in other steps."
     }
   }
 }

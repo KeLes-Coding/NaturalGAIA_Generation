@@ -48,7 +48,7 @@ def inject_custom_css():
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
         }}
         
-        /* 关键：修复 HTML Timeline 的样式 */
+        /* --- 核心：修复 Timeline 样式 (Dark Mode 适配) --- */
         .step-container {{
             display: flex;
             align-items: flex-start;
@@ -74,7 +74,7 @@ def inject_custom_css():
             z-index: 10;
         }}
         .step-content {{
-            background: #1F242C;
+            background: #1F242C; /* 深色卡片背景 */
             padding: 12px 16px;
             border-radius: 8px;
             width: 100%;
@@ -91,7 +91,22 @@ def inject_custom_css():
         .step-title {{
             font-size: 1.1rem;
             font-weight: 600;
-            color: #fff;
+            color: #FFFFFF; /* 纯白标题 */
+            margin: 5px 0;
+        }}
+        .step-desc {{
+            color: #B0BEC5; /* --- 修复：浅灰蓝色，在深色背景下清晰可见 --- */
+            font-size: 0.95em;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }}
+        .step-context {{
+            font-size: 0.85em;
+            color: #E6E6E6; /* --- 修复：浅色文字 --- */
+            background-color: rgba(255, 213, 79, 0.15); /* --- 修复：半透明琥珀色背景 --- */
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 213, 79, 0.4); /* 琥珀色边框 */
         }}
         .app-badge {{
             display: inline-block;
@@ -101,6 +116,17 @@ def inject_custom_css():
             margin-left: 8px;
             background: rgba(255,255,255,0.1);
             border: 1px solid rgba(255,255,255,0.2);
+        }}
+        
+        /* Start Entity Badge */
+        .start-badge {{
+            background-color: rgba(79, 195, 247, 0.15);
+            color: #4FC3F7;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            display: inline-block;
+            border: 1px solid rgba(79, 195, 247, 0.4);
         }}
     </style>
     """,

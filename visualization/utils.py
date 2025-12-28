@@ -22,6 +22,7 @@ def load_json_file(subdir, filename):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
+        print(f"Error loading {path}: {e}")
         return None
 
 
@@ -31,6 +32,13 @@ def load_graph_data(filename):
     if not json_data:
         return None
     try:
-        return nx.node_link_graph(json_data, edges="edges")
-    except:
+        # --- 修复点：移除 edges="edges"，让 NetworkX 自动检测 (通常默认为 "links") ---
+        # 如果新版 NetworkX 默认 links 但文件是 edges，可以尝试两种方式
+        try:
+            return nx.node_link_graph(json_data)
+        except:
+            # 兼容旧格式或特定参数
+            return nx.node_link_graph(json_data, edges="edges")
+    except Exception as e:
+        print(f"Graph load error: {e}")
         return None

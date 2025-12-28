@@ -6,140 +6,157 @@ import os
 from SPARQLWrapper import SPARQLWrapper, JSON
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
+from urllib.error import URLError
+from http.client import RemoteDisconnected
 from src.utils import logger, load_json_config
 
 
 class GraphBuilder:
     def __init__(
         self,
-        config_file="tools_config.json",
+        config_file="config/tools_config.json",
         seed_val=2025,
-        max_workers=4,
+        max_workers=5,  # 恢复并发数
         data_dir="data",
     ):
         self.seed_val = seed_val
         self.rng = random.Random(seed_val)
         self.max_workers = max_workers
         self.data_dir = data_dir
-
         os.makedirs(os.path.join(self.data_dir, "graphs"), exist_ok=True)
 
-        # 加载工具配置
         self.schema_config = load_json_config(config_file)
-        self.schema_map = self._parse_schema()
-        self.allowed_props = list(self.schema_map.keys())
+        self.prop_to_actions = self._parse_schema_to_actions()
+        self.all_props = list(self.prop_to_actions.keys())
 
-        # 预生成 SPARQL 过滤子句
         self.sparql_values_clause = (
-            "VALUES ?p { "
-            + " ".join([f"wdt:{pid}" for pid in self.allowed_props])
-            + " }"
+            "VALUES ?p { " + " ".join([f"wdt:{pid}" for pid in self.all_props]) + " }"
         )
-        logger.info(
-            f"GraphBuilder ready. Filtering {len(self.allowed_props)} properties."
-        )
+        logger.info(f"GraphBuilder ready. Monitoring {len(self.all_props)} properties.")
 
-    def _parse_schema(self):
-        """解析 tools_config.json 为扁平映射"""
-        flat_map = {}
-        for domain, content in self.schema_config["domains"].items():
-            if "tools" in content:
-                for pid, info in content["tools"].items():
-                    flat_map[pid] = {
-                        "domain": domain,
-                        "app": info["app"],
-                        "tool_name": info["name"],
-                    }
-        return flat_map
+    def _parse_schema_to_actions(self):
+        map_data = {}
+        for domain, d_data in self.schema_config["domains"].items():
+            apps = d_data.get("apps", {})
+            for app_name, app_data in apps.items():
+                entities = app_data.get("entities", {})
+                for ent_name, ent_data in entities.items():
+                    actions = ent_data.get("actions", {})
+                    for action_key, action_info in actions.items():
+                        raw_rel = action_info["relation"]
+                        if raw_rel.startswith("reverse_"):
+                            pid = raw_rel.replace("reverse_", "").split("_")[0]
+                            direction = "reverse"
+                        else:
+                            pid = raw_rel
+                            direction = "forward"
 
-    def _fetch_node_neighbors(self, entity_id):
-        """执行双向 SPARQL 查询"""
+                        if pid not in map_data:
+                            map_data[pid] = []
+                        map_data[pid].append(
+                            {
+                                "domain": domain,
+                                "app": app_name,
+                                "source_entity_type": ent_name,
+                                "target_entity_type": action_info["target"],
+                                "action_key": action_key,
+                                "action_desc": action_info["desc"],
+                                "direction": direction,
+                            }
+                        )
+        return map_data
+
+    # 重试策略：遇到网络错误才等待，否则全速运行
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=5),
+        retry=retry_if_exception_type((URLError, RemoteDisconnected, Exception)),
+        reraise=False,  # 失败三次后不抛异常，而是返回 None 并在上层处理
+    )
+    def _execute_sparql_query(self, query):
         sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
         sparql.setReturnFormat(JSON)
-        ua = f"AcademicBenchmarkBot/1.0 (RandomSeed: {self.rng.randint(1, 10000)})"
-        sparql.addCustomHttpHeader("User-Agent", ua)
-        sparql.setTimeout(30)
+        # 简化 User-Agent
+        sparql.addCustomHttpHeader("User-Agent", f"NaturalGaia/SpeedBot")
+        sparql.setTimeout(20)  # 减少超时等待
+        sparql.setQuery(query)
+        return sparql.query().convert()
 
+    def _fetch_node_neighbors(self, entity_id):
         valid_neighbors = []
 
-        def run_query(query_type):
-            if query_type == "forward":
-                query = f"""
-                SELECT ?p ?neighbor ?neighborLabel ?propLabel WHERE {{
-                  {self.sparql_values_clause}
-                  wd:{entity_id} ?p ?neighbor .
-                  ?neighbor wdt:P31 ?anyType . 
-                  ?prop wikibase:directClaim ?p .
-                  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
-                }} LIMIT 50
-                """
-            else:  # reverse
-                query = f"""
-                SELECT ?p ?neighbor ?neighborLabel ?propLabel WHERE {{
-                  {self.sparql_values_clause}
-                  ?neighbor ?p wd:{entity_id} .
-                  ?neighbor wdt:P31 ?anyType .
-                  ?prop wikibase:directClaim ?p .
-                  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
-                }} LIMIT 50
-                """
+        # 1. 构造合并查询（Union）或者分两次极速查询
+        # 这里为了稳妥，分两次，但 Limit 降为 150
+        def run_query(direction):
+            if direction == "forward":
+                pattern = f"wd:{entity_id} ?p ?neighbor ."
+            else:
+                pattern = f"?neighbor ?p wd:{entity_id} ."
 
-            sparql.setQuery(query)
-            try:
-                results = sparql.query().convert()
-                local_results = []
-                for r in results["results"]["bindings"]:
-                    p_id = r["p"]["value"].split("/")[-1]
-                    if p_id not in self.schema_map:
-                        continue
+            query = f"""
+            SELECT ?p ?neighbor ?neighborLabel WHERE {{
+              {self.sparql_values_clause}
+              {pattern}
+              ?neighbor wdt:P31 ?anyType .
+              SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
+            }} LIMIT 150 
+            """
+            # LIMIT 150 足够了，300太慢
 
-                    local_results.append(
-                        {
-                            "r_id": p_id,
-                            "r_label": r.get("propLabel", {}).get("value", p_id),
-                            "e_id": r["neighbor"]["value"].split("/")[-1],
-                            "e_label": r.get("neighborLabel", {}).get(
-                                "value", "Unknown"
-                            ),
-                            "app_info": self.schema_map[p_id],
-                            "direction": query_type,
-                        }
-                    )
-                return local_results
-            except Exception as e:
-                logger.warning(
-                    f"[{query_type.upper()}] Query failed for {entity_id}: {str(e)}"
-                )
+            res = self._execute_sparql_query(query)
+            if not res:
                 return []
 
-        # 执行查询
-        valid_neighbors.extend(run_query("forward"))
-        time.sleep(0.2)
-        valid_neighbors.extend(run_query("reverse"))
+            local_res = []
+            for r in res["results"]["bindings"]:
+                p_id = r["p"]["value"].split("/")[-1]
+                n_id = r["neighbor"]["value"].split("/")[-1]
+                n_label = r.get("neighborLabel", {}).get("value", n_id)
 
+                if p_id in self.prop_to_actions:
+                    possible_actions = self.prop_to_actions[p_id]
+                    for action in possible_actions:
+                        if action["direction"] == direction:
+                            local_res.append(
+                                {
+                                    "neighbor_id": n_id,
+                                    "neighbor_label": n_label,
+                                    "action_metadata": action,
+                                }
+                            )
+            return local_res
+
+        # 移除中间的 sleep，全速请求
+        valid_neighbors.extend(run_query("forward"))
+        valid_neighbors.extend(run_query("reverse"))
         return entity_id, valid_neighbors
 
-    def build_subgraph_parallel(self, start_entity_id, max_nodes=200, max_branch=3):
-        logger.info(f"--- Stage 1: Building Subgraph (Seed: {start_entity_id}) ---")
+    def build_subgraph_parallel(self, start_entity_id, max_nodes=300, max_branch=3):
+        logger.info(f"--- Stage 1: Building Graph (High Speed Mode) ---")
         self.rng = random.Random(self.seed_val)
 
-        G = nx.DiGraph()
-        G.add_node(start_entity_id, label="StartNode")  # Label 需在外部修正
+        # 强制使用 MultiDiGraph
+        G = nx.MultiDiGraph()
+        G.add_node(start_entity_id, label="StartNode", type="Generic")
 
         queue = [start_entity_id]
         visited_or_queued = {start_entity_id}
 
-        pbar = tqdm(total=max_nodes, desc="Crawling Nodes")
+        pbar = tqdm(total=max_nodes, desc="Crawling")
         pbar.update(1)
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             while len(G.nodes) < max_nodes and queue:
-                batch_size = self.max_workers * 2
                 current_batch = []
-                for _ in range(batch_size):
+                for _ in range(self.max_workers * 2):
                     if queue:
                         current_batch.append(queue.pop(0))
-
                 if not current_batch:
                     break
 
@@ -154,60 +171,53 @@ class GraphBuilder:
                         continue
 
                     self.rng.shuffle(neighbors)
-                    selected = neighbors[:max_branch]
-
-                    for n in selected:
-                        if len(G.nodes) >= max_nodes:
+                    count = 0
+                    for n in neighbors:
+                        if count >= max_branch:
                             break
 
-                        target_id = n["e_id"]
-                        if target_id not in visited_or_queued:
-                            visited_or_queued.add(target_id)
-                            if len(G.nodes) < max_nodes:
-                                queue.append(target_id)
+                        target_id = n["neighbor_id"]
+                        meta = n["action_metadata"]
 
-                        if not G.has_node(target_id):
-                            G.add_node(target_id, label=n["e_label"])
+                        # 节点逻辑
+                        if target_id not in visited_or_queued:
+                            if len(G.nodes) >= max_nodes:
+                                break
+                            visited_or_queued.add(target_id)
+                            queue.append(target_id)
+                            G.add_node(target_id, label=n["neighbor_label"])
                             pbar.update(1)
 
-                        # 处理边和工具描述
-                        is_reverse = n["direction"] == "reverse"
-                        action_desc = n["app_info"]["tool_name"]
-                        if is_reverse:
-                            action_desc = (
-                                f"search_{n['app_info']['domain']}_by_{n['r_label']}"
+                        # 边逻辑 (无论是否已访问，都加边)
+                        if G.has_node(target_id) or target_id in visited_or_queued:
+                            G.add_edge(
+                                original_id,
+                                target_id,
+                                app=meta["app"],
+                                domain=meta["domain"],
+                                action_key=meta["action_key"],
+                                action_desc=meta["action_desc"],
+                                source_type=meta["source_entity_type"],
+                                target_type=meta["target_entity_type"],
                             )
-
-                        G.add_edge(
-                            original_id,
-                            target_id,
-                            r_id=n["r_id"],
-                            r_label=n["r_label"],
-                            app=n["app_info"]["app"],
-                            tool=action_desc,
-                            domain=n["app_info"]["domain"],
-                            direction=n["direction"],
-                        )
-                time.sleep(0.5)
+                        count += 1
         pbar.close()
-
-        if len(G.nodes) < 5:
-            logger.critical(f"Graph too small ({len(G.nodes)} nodes).")
-
         return G
 
     def save_graph(self, G, filename):
         path = os.path.join(self.data_dir, "graphs", filename)
+        # 确保目录存在
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # NetworkX 的 node_link_data 会自动处理 multigraph 属性
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(
-                nx.node_link_data(G, edges="edges"), f, ensure_ascii=False, indent=2
-            )
-        logger.info(f"Graph saved to {path}")
+            json.dump(nx.node_link_data(G), f, ensure_ascii=False, indent=2)
+        logger.info(
+            f"Graph saved to {path} (Nodes: {len(G.nodes)}, Edges: {len(G.edges)})"
+        )
 
     def load_graph(self, filename):
         path = os.path.join(self.data_dir, "graphs", filename)
         if not os.path.exists(path):
-            logger.info(f"Graph file not found: {path}")
             return None
         with open(path, "r", encoding="utf-8") as f:
-            return nx.node_link_graph(json.load(f), edges="edges")
+            return nx.node_link_graph(json.load(f))
