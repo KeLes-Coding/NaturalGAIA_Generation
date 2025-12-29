@@ -3,46 +3,71 @@
     "Multimedia": {
       "apps": {
         "Spotify": {
-          "description": "Music streaming.",
+          "description": "Music streaming service. Focus on Artists, Albums, and Tracks.",
           "entities": {
             "Track": {
-              "constraints": ["P175", "P361", "P2047", "P577"],
+              "type_filter": [
+                "Q218818", 
+                "Q7366", 
+                "Q105543609"
+              ],
+              "comment": "Root Types: Musical Recording (Q218818), Song (Q7366), Musical Work (Q105543609)",
+              "constraints": ["P175", "P361", "P2047", "P577", "P136"],
               "actions": {
-                "click_artist": {"target": "Artist", "relation": "P175", "desc": "Click artist name", "intent": "find the performing artist"},
-                "click_album": {"target": "Album", "relation": "P361", "desc": "Click album cover", "intent": "find the source album"}
+                "view_artist": {"target": "Artist", "relation": "P175", "desc": "Go to Artist profile", "intent": "find the performing artist"},
+                "view_album": {"target": "Album", "relation": "P361", "desc": "Go to Album page", "intent": "find the album containing this track"}
               }
             },
             "Artist": {
-              "constraints": ["P136"], 
+              "type_filter": [
+                "Q639669", 
+                "Q215380", 
+                "Q5"
+              ],
+              "comment": "Root Types: Musician (Q639669), Musical Group (Q215380), Human (Q5 - Context dependent)",
+              "constraints": ["P136", "P264"], 
               "actions": {
-                "pick_album": {"target": "Album", "relation": "reverse_P175_then_P361", "desc": "Select album", "intent": "find an album by this artist"},
-                "pick_top_track": {"target": "Track", "relation": "reverse_P175", "desc": "Play top song", "intent": "find a popular track"},
-                "related_artists": {"target": "Artist", "relation": "P1659", "desc": "Check 'Fans Also Like'", "intent": "discover a similar artist"}
+                "browse_albums": {"target": "Album", "relation": "reverse_P175_then_P361", "desc": "View Discography", "intent": "find albums by this artist"},
+                "top_tracks": {"target": "Track", "relation": "reverse_P175", "desc": "Play Top Songs", "intent": "find popular songs by this artist"},
+                "fans_also_like": {"target": "Artist", "relation": "P1659", "desc": "Fans Also Like", "intent": "find similar artists"}
               }
             },
             "Album": {
-              "constraints": ["P577", "P264"],
+              "type_filter": [
+                "Q482994", 
+                "Q207628"
+              ],
+              "comment": "Root Types: Album (Q482994), Musical Release (Q207628)",
+              "constraints": ["P577", "P264", "P136"],
               "actions": {
-                "pick_track": {"target": "Track", "relation": "reverse_P361", "desc": "Select song", "intent": "find a track in this album"}
+                "play_track": {"target": "Track", "relation": "reverse_P361", "desc": "Play a song", "intent": "find a track in this album"}
               }
             }
           }
         },
         "IMDb": {
-          "description": "Movies database.",
+          "description": "Movie & TV database.",
           "entities": {
             "Movie": {
-              "constraints": ["P577", "P136", "P57"],
+              "type_filter": [
+                "Q11424", 
+                "Q5398426"
+              ],
+              "comment": "Root Types: Film (Q11424), Television Series (Q5398426)",
+              "constraints": ["P577", "P136", "P57", "P161"],
               "actions": {
-                "click_director": {"target": "Person", "relation": "P57", "desc": "Click director", "intent": "find the director"},
-                "click_cast": {"target": "Person", "relation": "P161", "desc": "Click cast", "intent": "find a cast member"},
-                "click_composer": {"target": "Person", "relation": "P86", "desc": "Click composer", "intent": "find the composer"}
+                "check_director": {"target": "Person", "relation": "P57", "desc": "View Director", "intent": "find the director"},
+                "check_cast": {"target": "Person", "relation": "P161", "desc": "View Cast", "intent": "find actors in this movie"},
+                "check_composer": {"target": "Person", "relation": "P86", "desc": "View Composer", "intent": "find the composer"}
               }
             },
             "Person": {
-              "constraints": ["P569", "P19"],
+              "type_filter": ["Q5"],
+              "comment": "Root Types: Human (Q5)",
+              "constraints": ["P569", "P19", "P106"],
               "actions": {
-                "filmography": {"target": "Movie", "relation": "reverse_P161", "desc": "Check Filmography", "intent": "find a movie they acted in"}
+                "see_filmography": {"target": "Movie", "relation": "reverse_P161", "desc": "Filmography", "intent": "find movies they acted in"},
+                "directed_movies": {"target": "Movie", "relation": "reverse_P57", "desc": "Production Credits", "intent": "find movies they directed"}
               }
             }
           }
@@ -52,16 +77,18 @@
     "GeoTravel": {
       "apps": {
         "Google Maps": {
-          "description": "Map navigation.",
+          "description": "Navigation and exploration of physical places.",
           "entities": {
             "Place": {
-              "constraints": ["P625", "P1082"], 
+              "type_filter": [
+                "Q27096213", "Q515", "Q6256", "Q5107", "Q1549591", "Q34876"
+              ],
+              "comment": "Root Types: City, Country, Continent, Settlement",
+              "constraints": ["P625", "P1082", "P421"], 
               "actions": {
-                "zoom_out_parent": {"target": "Place", "relation": "P131", "desc": "Check 'Located in'", "intent": "find the parent region"},
-                "zoom_in_child": {"target": "Place", "relation": "P150", "desc": "Search sub-districts", "intent": "find a sub-district"},
-                "neighboring_place": {"target": "Place", "relation": "P47", "desc": "Pan to border", "intent": "find a neighboring place"},
-                "capital_city": {"target": "Place", "relation": "P36", "desc": "Click capital", "intent": "find the capital city"},
-                "is_capital_of": {"target": "Place", "relation": "reverse_P36", "desc": "Identify country", "intent": "identify the country it serves as capital"}
+                "zoom_out": {"target": "Place", "relation": "P131", "desc": "Zoom out (Located In)", "intent": "find the parent region"},
+                "zoom_in": {"target": "Place", "relation": "P150", "desc": "Zoom in (Sub-divisions)", "intent": "find sub-districts or cities"},
+                "nearby": {"target": "Place", "relation": "P47", "desc": "Pan map (Shares border)", "intent": "find neighboring places"}
               }
             }
           }
@@ -71,36 +98,40 @@
     "Knowledge": {
       "apps": {
         "Wikipedia": {
-          "description": "Knowledge Hub. Connects everything.",
+          "description": "The central knowledge hub.",
           "entities": {
             "Person": {
-              "constraints": ["P569", "P570", "P27", "P26", "P22", "P25"],
+              "type_filter": ["Q5"],
+              "constraints": ["P569", "P570", "P27", "P26", "P22", "P25", "P106"],
               "actions": {
-                "birth_place_link": {"target": "Place", "relation": "P19", "desc": "Click Birth Place", "intent": "find the place of birth"},
-                "educated_at": {"target": "Organization", "relation": "P69", "desc": "Click Education", "intent": "find the university"},
-                "spouse": {"target": "Person", "relation": "P26", "desc": "Click Spouse", "intent": "identify the spouse"},
-                "father": {"target": "Person", "relation": "P22", "desc": "Click Father", "intent": "identify the father"},
-                "mother": {"target": "Person", "relation": "P25", "desc": "Click Mother", "intent": "identify the mother"},
-                "award_received": {"target": "Award", "relation": "P166", "desc": "Click Award", "intent": "find an award they received"}
+                "check_birthplace": {"target": "Place", "relation": "P19", "desc": "Click Birth Place", "intent": "find where they were born"},
+                "check_education": {"target": "Organization", "relation": "P69", "desc": "Click Education", "intent": "find their university/school"},
+                "check_spouse": {"target": "Person", "relation": "P26", "desc": "Click Spouse", "intent": "identify the spouse"},
+                "check_family": {"target": "Person", "relation": "P22", "desc": "Click Father", "intent": "identify the father"},
+                "check_awards": {"target": "Award", "relation": "P166", "desc": "Awards Section", "intent": "see what awards they won"}
               }
             },
             "Organization": {
+              "type_filter": ["Q43229"],
+              "comment": "Root Types: Organization (Q43229)",
               "constraints": ["P571", "P159"],
               "actions": {
-                "headquarters_loc": {"target": "Place", "relation": "P159", "desc": "Click Headquarters", "intent": "locate the headquarters"},
-                "founded_by": {"target": "Person", "relation": "P112", "desc": "Click Founder", "intent": "identify the founder"}
+                "view_hq": {"target": "Place", "relation": "P159", "desc": "Headquarters Location", "intent": "locate the headquarters"}
               }
             },
             "Place": {
+              "type_filter": ["Q27096213", "Q515", "Q6256"],
               "constraints": ["P17", "P1082"],
               "actions": {
-                "famous_people_born": {"target": "Person", "relation": "reverse_P19", "desc": "People from here", "intent": "find a famous person born here"}
+                "people_born_here": {"target": "Person", "relation": "reverse_P19", "desc": "Notable People Category", "intent": "find famous people born here"}
               }
             },
             "Award": {
+              "type_filter": ["Q618779"],
+              "comment": "Root Types: Award (Q618779)",
               "constraints": ["P585"],
               "actions": {
-                "winner": {"target": "Person", "relation": "reverse_P166", "desc": "See winners", "intent": "find a winner of this award"}
+                "view_winners": {"target": "Person", "relation": "reverse_P166", "desc": "List of winners", "intent": "find a winner of this award"}
               }
             }
           }

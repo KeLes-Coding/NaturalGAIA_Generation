@@ -22,7 +22,7 @@ class GraphBuilder:
         self,
         config_file="config/tools_config.json",
         seed_val=2025,
-        max_workers=5,  # 恢复并发数
+        max_workers=5,
         data_dir="data",
     ):
         self.seed_val = seed_val
@@ -32,15 +32,67 @@ class GraphBuilder:
         os.makedirs(os.path.join(self.data_dir, "graphs"), exist_ok=True)
 
         self.schema_config = load_json_config(config_file)
+
+        # 1. 解析 Schema，建立 属性 -> 动作 的映射
         self.prop_to_actions = self._parse_schema_to_actions()
         self.all_props = list(self.prop_to_actions.keys())
 
-        self.sparql_values_clause = (
+        # 2. 提取 Config 中所有的根类 ID (Root Types)
+        # 我们将在 SPARQL 中把邻居映射回这些根类，以实现子类自动兼容
+        self.all_root_types = self._collect_all_root_types()
+
+        # 3. 构造 SPARQL 子句
+        # 限制查询的属性范围
+        self.sparql_prop_values = (
             "VALUES ?p { " + " ".join([f"wdt:{pid}" for pid in self.all_props]) + " }"
         )
+        # 限制查询的根类范围 (用于推理)
+        self.sparql_type_values = (
+            "VALUES ?rootType { "
+            + " ".join([f"wd:{qid}" for qid in self.all_root_types])
+            + " }"
+        )
+
         logger.info(f"GraphBuilder ready. Monitoring {len(self.all_props)} properties.")
+        logger.info(
+            f"Type Inference enabled for {len(self.all_root_types)} Root Classes (e.g., Album, Movie, Place)."
+        )
+
+    def _collect_all_root_types(self):
+        """
+        扫描 Config，收集所有 type_filter 中定义的 Q-ID。
+        """
+        root_types = set()
+        for domain, d_data in self.schema_config["domains"].items():
+            for app, app_data in d_data.get("apps", {}).items():
+                for ent, ent_data in app_data.get("entities", {}).items():
+                    # 兼容新旧字段
+                    filters = (
+                        ent_data.get("type_filter")
+                        or ent_data.get("target_filters")
+                        or []
+                    )
+                    root_types.update(filters)
+        return list(root_types)
 
     def _parse_schema_to_actions(self):
+        """
+        解析配置文件，将属性映射到动作，并记录预期的目标根类。
+        """
+        # 第一步：建立 实体名 -> 根类列表 的查找表
+        # 格式: {"Spotify.Album": {"Q482994", "Q207628"}, ...}
+        entity_type_map = {}
+        for domain, d_data in self.schema_config["domains"].items():
+            for app_name, app_data in d_data.get("apps", {}).items():
+                for ent_name, ent_data in app_data.get("entities", {}).items():
+                    filters = ent_data.get("type_filter") or ent_data.get(
+                        "target_filters"
+                    )
+                    if filters:
+                        key = f"{domain}.{app_name}.{ent_name}"
+                        entity_type_map[key] = set(filters)
+
+        # 第二步：将属性映射到 Action
         map_data = {}
         for domain, d_data in self.schema_config["domains"].items():
             apps = d_data.get("apps", {})
@@ -50,6 +102,8 @@ class GraphBuilder:
                     actions = ent_data.get("actions", {})
                     for action_key, action_info in actions.items():
                         raw_rel = action_info["relation"]
+
+                        # 解析方向
                         if raw_rel.startswith("reverse_"):
                             pid = raw_rel.replace("reverse_", "").split("_")[0]
                             direction = "reverse"
@@ -59,89 +113,144 @@ class GraphBuilder:
 
                         if pid not in map_data:
                             map_data[pid] = []
+
+                        # 获取该动作允许的目标根类
+                        target_ent_type = action_info["target"]
+                        target_key = f"{domain}.{app_name}.{target_ent_type}"
+                        allowed_roots = entity_type_map.get(target_key)
+
                         map_data[pid].append(
                             {
                                 "domain": domain,
                                 "app": app_name,
                                 "source_entity_type": ent_name,
-                                "target_entity_type": action_info["target"],
+                                "target_entity_type": target_ent_type,
                                 "action_key": action_key,
                                 "action_desc": action_info["desc"],
                                 "direction": direction,
+                                # 这里存储的是 Config 里写的“父类”
+                                "allowed_root_types": allowed_roots,
                             }
                         )
         return map_data
 
-    # 重试策略：遇到网络错误才等待，否则全速运行
     @retry(
         stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=5),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
         retry=retry_if_exception_type((URLError, RemoteDisconnected, Exception)),
-        reraise=False,  # 失败三次后不抛异常，而是返回 None 并在上层处理
+        reraise=False,
     )
     def _execute_sparql_query(self, query):
         sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
         sparql.setReturnFormat(JSON)
-        # 简化 User-Agent
-        sparql.addCustomHttpHeader("User-Agent", f"NaturalGaia/SpeedBot")
-        sparql.setTimeout(20)  # 减少超时等待
+        sparql.addCustomHttpHeader("User-Agent", f"NaturalGaia/InferenceBot")
+        sparql.setTimeout(45)  # 推理查询稍慢，增加超时
         sparql.setQuery(query)
         return sparql.query().convert()
 
     def _fetch_node_neighbors(self, entity_id):
+        """
+        使用 SPARQL 属性路径 (Property Paths) 进行智能抓取。
+        即：不仅看 ?neighbor 是什么类型，还看它是否属于 Config 定义的根类的子类。
+        """
         valid_neighbors = []
 
-        # 1. 构造合并查询（Union）或者分两次极速查询
-        # 这里为了稳妥，分两次，但 Limit 降为 150
         def run_query(direction):
             if direction == "forward":
-                pattern = f"wd:{entity_id} ?p ?neighbor ."
+                # Entity -> Neighbor
+                # 必须过滤: Neighbor 必须是 Item (Q...)
+                pattern = f"wd:{entity_id} ?p ?neighbor . FILTER(isIRI(?neighbor))"
             else:
-                pattern = f"?neighbor ?p wd:{entity_id} ."
+                # Neighbor -> Entity
+                pattern = f"?neighbor ?p wd:{entity_id} . FILTER(isIRI(?neighbor))"
 
+            # --- 核心升级：推理查询 ---
+            # 1. ?neighbor wdt:P31/wdt:P279* ?rootType
+            #    这句话的意思是：查找 neighbor 的类型，或者它类型的父类、祖父类...
+            # 2. VALUES ?rootType { ... }
+            #    只保留那些“祖先”是我们 Config 里定义的 Root Class 的结果。
+            # 这相当于在 SPARQL 端完成了 isValidSubclassOf() 的检查。
             query = f"""
-            SELECT ?p ?neighbor ?neighborLabel WHERE {{
-              {self.sparql_values_clause}
+            SELECT DISTINCT ?p ?neighbor ?neighborLabel ?rootType WHERE {{
+              {self.sparql_prop_values}
               {pattern}
-              ?neighbor wdt:P31 ?anyType .
+              
+              # 推理核心：检查 neighbor 是否是我们关注的根类的实例（或子类的实例）
+              ?neighbor wdt:P31/wdt:P279* ?rootType .
+              {self.sparql_type_values}
+              
               SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
-            }} LIMIT 150 
+            }} LIMIT 300
             """
-            # LIMIT 150 足够了，300太慢
 
             res = self._execute_sparql_query(query)
             if not res:
                 return []
 
-            local_res = []
+            # 1. 聚合结果
+            # 因为一个 neighbor 可能匹配多个 rootType (如既是 Director 也是 Person)
+            # 结构: { "Q123": { "label": "X", "relations": { "P1": {"rootA", "rootB"} } } }
+            temp_nodes = {}
+
             for r in res["results"]["bindings"]:
                 p_id = r["p"]["value"].split("/")[-1]
                 n_id = r["neighbor"]["value"].split("/")[-1]
                 n_label = r.get("neighborLabel", {}).get("value", n_id)
+                r_type = (
+                    r.get("rootType", {}).get("value", "").split("/")[-1]
+                )  # 这是一个 Root Class ID
 
-                if p_id in self.prop_to_actions:
-                    possible_actions = self.prop_to_actions[p_id]
-                    for action in possible_actions:
-                        if action["direction"] == direction:
+                if n_id not in temp_nodes:
+                    temp_nodes[n_id] = {"label": n_label, "edges": {}}
+
+                if p_id not in temp_nodes[n_id]["edges"]:
+                    temp_nodes[n_id]["edges"][p_id] = set()
+
+                if r_type:
+                    temp_nodes[n_id]["edges"][p_id].add(r_type)
+
+            local_res = []
+
+            # 2. 匹配验证
+            for n_id, data in temp_nodes.items():
+                for p_id, found_roots in data["edges"].items():
+                    if p_id in self.prop_to_actions:
+                        possible_actions = self.prop_to_actions[p_id]
+
+                        for action in possible_actions:
+                            # 方向检查
+                            if action["direction"] != direction:
+                                continue
+
+                            # 类型检查 (基于 Root Class)
+                            # 只要 SPARQL 找到的 ?rootType 与 Action 要求的 allowed_root_types 有交集
+                            # 就说明这个 Neighbor 是合法的子类实例
+                            allowed = action["allowed_root_types"]
+                            if allowed:
+                                if not found_roots.intersection(allowed):
+                                    continue  # 虽然有连线，但类型推导不匹配
+
                             local_res.append(
                                 {
                                     "neighbor_id": n_id,
-                                    "neighbor_label": n_label,
+                                    "neighbor_label": data["label"],
                                     "action_metadata": action,
                                 }
                             )
             return local_res
 
-        # 移除中间的 sleep，全速请求
+        # 执行双向查询
+        # 注意：这里可能会有些慢，因为涉及到 wdt:P279* 推理
+        # 但因为限定了 VALUES ?rootType，查询引擎通常能优化
         valid_neighbors.extend(run_query("forward"))
         valid_neighbors.extend(run_query("reverse"))
+
         return entity_id, valid_neighbors
 
     def build_subgraph_parallel(self, start_entity_id, max_nodes=300, max_branch=3):
-        logger.info(f"--- Stage 1: Building Graph (High Speed Mode) ---")
+        logger.info(f"--- Stage 1: Building Graph (Root-Class Inference Mode) ---")
         self.rng = random.Random(self.seed_val)
 
-        # 强制使用 MultiDiGraph
         G = nx.MultiDiGraph()
         G.add_node(start_entity_id, label="StartNode", type="Generic")
 
@@ -188,7 +297,7 @@ class GraphBuilder:
                             G.add_node(target_id, label=n["neighbor_label"])
                             pbar.update(1)
 
-                        # 边逻辑 (无论是否已访问，都加边)
+                        # 边逻辑
                         if G.has_node(target_id) or target_id in visited_or_queued:
                             G.add_edge(
                                 original_id,
@@ -206,9 +315,7 @@ class GraphBuilder:
 
     def save_graph(self, G, filename):
         path = os.path.join(self.data_dir, "graphs", filename)
-        # 确保目录存在
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        # NetworkX 的 node_link_data 会自动处理 multigraph 属性
         with open(path, "w", encoding="utf-8") as f:
             json.dump(nx.node_link_data(G), f, ensure_ascii=False, indent=2)
         logger.info(
