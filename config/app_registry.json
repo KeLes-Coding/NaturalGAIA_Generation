@@ -1,0 +1,16 @@
+{
+  "active_domains": [
+    "Multimedia",
+    "GeoTravel",
+    "Knowledge",
+    "Finance",
+    "MoviesTV"
+  ],
+  "app_sources": {
+    "Multimedia": "config/domains/multimedia.json",
+    "GeoTravel": "config/domains/geospatial.json",
+    "Finance": "config/domains/finance.json",
+    "Knowledge": "config/domains/knowledge.json",
+    "MoviesTV": "config/domains/moviestv.json"
+  }
+}

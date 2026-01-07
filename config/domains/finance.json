@@ -1,0 +1,83 @@
+{
+  "apps": {
+    "Amazon": {
+      "description": "E-commerce platform for books and products.",
+      "entities": {
+        "Book": {
+          "type_filter": ["Q571", "Q47461344"],
+          "comment": "Root Types: Book (Q571), Written Work",
+          "constraints": ["P50", "P123"],
+          "actions": {
+            "check_author": {
+              "target": "Person",
+              "relation": "P50",
+              "desc": "View Author Page",
+              "intent": "find the author of the book"
+            },
+            "check_publisher": {
+              "target": "Organization",
+              "relation": "P123",
+              "desc": "View Publisher Details",
+              "intent": "find the publisher"
+            }
+          }
+        },
+        "Person": {
+          "type_filter": ["Q5"],
+          "constraints": ["P106"],
+          "actions": {
+            "view_books": {
+              "target": "Book",
+              "relation": "reverse_P50",
+              "desc": "Books by this author",
+              "intent": "find books written by them"
+            }
+          }
+        },
+        "Organization": {
+          "type_filter": ["Q43229"],
+          "constraints": [],
+          "actions": {
+            "published_books": {
+              "target": "Book",
+              "relation": "reverse_P123",
+              "desc": "Books published",
+              "intent": "find books published by them"
+            }
+          }
+        }
+      }
+    },
+    "Yahoo Finance": {
+      "description": "Financial market data.",
+      "entities": {
+        "Company": {
+          "type_filter": ["Q4830453", "Q6881511"],
+          "comment": "Root Types: Business Enterprise",
+          "constraints": ["P414"],
+          "actions": {
+            "check_exchange": {
+              "target": "Exchange",
+              "relation": "P414",
+              "desc": "View Stock Exchange",
+              "intent": "find where it is listed"
+            }
+          }
+        },
+        "Exchange": {
+          "type_filter": ["Q11691"],
+          "comment": "Stock Exchange",
+          "constraints": [],
+          "actions": {
+            "listed_companies": {
+              "target": "Company",
+              "relation": "reverse_P414",
+              "desc": "Listed Companies",
+              "intent": "find companies listed here"
+            }
+          }
+        }
+      }
+    }
+  }
+}

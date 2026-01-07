@@ -1,0 +1,14 @@
+{
+  "NBA App": {
+    "entities": {
+      "Game": {
+        "type_filter": ["Q16510064"],
+        "constraints": ["P585", "P1346"],
+        "actions": {
+          "check_date": {"intent": "when was the game played", "relation": "P585"},
+          "check_winner": {"intent": "who won the game", "relation": "P1346"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "apps": {
+    "Google Maps": {
+      "description": "Navigation and exploration.",
+      "entities": {
+        "Place": {
+          "type_filter": ["Q27096213", "Q515", "Q6256", "Q5107", "Q1549591", "Q34876"],
+          "comment": "Root Types: City, Country, Continent, Settlement",
+          "constraints": ["P625", "P131"], 
+          "actions": {
+            "zoom_out": {"target": "Place", "relation": "P131", "desc": "Zoom out (Located In)", "intent": "find the parent region"},
+            "zoom_in": {"target": "Place", "relation": "P150", "desc": "Zoom in (Sub-divisions)", "intent": "find sub-districts or cities"},
+            "nearby": {"target": "Place", "relation": "P47", "desc": "Pan map (Shares border)", "intent": "find neighboring places"}
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "apps": {
+    "Wikipedia": {
+      "description": "The central knowledge hub.",
+      "entities": {
+        "Person": {
+          "type_filter": ["Q5"],
+          "constraints": ["P569", "P19", "P69", "P106"],
+          "actions": {
+            "check_birthplace": {
+              "target": "Place",
+              "relation": "P19",
+              "desc": "Click Birth Place",
+              "intent": "find where they were born"
+            },
+            "check_education": {
+              "target": "Organization",
+              "relation": "P69",
+              "desc": "Click Education",
+              "intent": "find their university/school"
+            },
+            "check_spouse": {
+              "target": "Person",
+              "relation": "P26",
+              "desc": "Click Spouse",
+              "intent": "identify the spouse"
+            },
+             "check_father": {
+              "target": "Person",
+              "relation": "P22",
+              "desc": "Click Father",
+              "intent": "identify the father"
+            }
+          }
+        },
+        "Organization": {
+          "type_filter": ["Q43229"],
+          "comment": "Root Types: Organization",
+          "constraints": ["P159"],
+          "actions": {
+            "view_hq": {
+              "target": "Place",
+              "relation": "P159",
+              "desc": "Headquarters Location",
+              "intent": "locate the headquarters"
+            }
+          }
+        },
+        "Place": {
+          "type_filter": ["Q27096213", "Q515", "Q6256"],
+          "constraints": ["P17"],
+          "actions": {
+            "people_born_here": {
+              "target": "Person",
+              "relation": "reverse_P19",
+              "desc": "Notable People Category",
+              "intent": "find famous people born here"
+            }
+          }
+        },
+        "Award": {
+          "type_filter": ["Q618779"],
+          "comment": "Root Types: Award",
+          "constraints": [],
+          "actions": {
+            "view_winners": {
+              "target": "Person",
+              "relation": "reverse_P166",
+              "desc": "List of winners",
+              "intent": "find a winner of this award"
+            }
+          }
+        }
+      }
+    }
+  }
+}

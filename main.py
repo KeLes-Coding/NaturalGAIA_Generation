@@ -44,15 +44,18 @@ def main():
         f"Starting Benchmark Builder with Seed: {args.seed}, Workers: {args.workers}, Target Tasks: {args.tasks}"
     )
 
-    # --- 关键修正：定义正确的配置文件路径 ---
-    tools_config_path = os.path.join("config", "tools_config.json")
+    # --- 关键修正：指向 Registry 文件 ---
+    # 旧路径: "config/tools_config.json"
+    # 新路径: "config/app_registry.json"
+    registry_path = os.path.join("config", "app_registry.json")
     llm_config_path = os.path.join("config", "llm_config.yaml")
 
     # 1. 爬取与建图
-    # 修正：传入 config_file 参数
+    # 传入 config_file 参数
     builder = GraphBuilder(
-        config_file=tools_config_path, seed_val=args.seed, max_workers=args.workers
+        config_file=registry_path, seed_val=args.seed, max_workers=args.workers
     )
+
     graph_file = f"app_graph_{args.seed}.json"
 
     G = builder.load_graph(graph_file)
@@ -72,14 +75,13 @@ def main():
     tasks, task_file = generator.generate_tasks(G, total_paths=args.tasks)
 
     # 3. LLM 润色 (可选)
-    # if not args.skip_llm:
-    #     logger.info("Starting LLM Refinement...")
-    #     # 修正：传入 config_path 参数
-    #     llm_client = LLMClient(config_path=llm_config_path)
-    #     refined_file = os.path.join("data", "tasks", f"tasks_{args.seed}_refined.json")
-    #     llm_client.paraphrase_tasks(task_file, refined_file)
-    # else:
-    #     logger.info("Skipping LLM refinement.")
+    if not args.skip_llm:
+        logger.info("Starting LLM Refinement...")
+        llm_client = LLMClient(config_path=llm_config_path)
+        refined_file = os.path.join("data", "tasks", f"tasks_{args.seed}_refined.json")
+        llm_client.paraphrase_tasks(task_file, refined_file)
+    else:
+        logger.info("Skipping LLM refinement.")
 
 
 if __name__ == "__main__":

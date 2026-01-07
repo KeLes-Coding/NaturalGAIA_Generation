@@ -1,0 +1,62 @@
+{
+  "apps": {
+    "Spotify": {
+      "description": "Music streaming service.",
+      "entities": {
+        "Track": {
+          "type_filter": ["Q218818", "Q7366", "Q105543609"],
+          "constraints": ["P175", "P361"],
+          "actions": {
+            "view_artist": {"target": "Artist", "relation": "P175", "desc": "Go to Artist profile", "intent": "find the performing artist"},
+            "view_album": {"target": "Album", "relation": "P361", "desc": "Go to Album page", "intent": "find the album containing this track"}
+          }
+        },
+        "Artist": {
+          "type_filter": ["Q639669", "Q215380", "Q5"],
+          "constraints": ["P136", "P264"], 
+          "actions": {
+            "browse_albums": {"target": "Album", "relation": "reverse_P175_then_P361", "desc": "View Discography", "intent": "find albums by this artist"},
+            "top_tracks": {"target": "Track", "relation": "reverse_P175", "desc": "Play Top Songs", "intent": "find popular songs by this artist"},
+            "fans_also_like": {"target": "Artist", "relation": "P1659", "desc": "Fans Also Like", "intent": "find similar artists"}
+          }
+        },
+        "Album": {
+          "type_filter": ["Q482994", "Q207628"],
+          "constraints": ["P577", "P264"],
+          "actions": {
+            "play_track": {"target": "Track", "relation": "reverse_P361", "desc": "Play a song", "intent": "find a track in this album"}
+          }
+        }
+      }
+    },
+    "YouTube": {
+      "description": "Video sharing platform.",
+      "entities": {
+        "Channel": {
+          "type_filter": ["Q196263", "Q5"],
+          "comment": "YouTube Channel or YouTuber (Person)",
+          "constraints": ["P1651"],
+          "actions": {
+            "check_owner": {
+              "target": "Person", 
+              "relation": "P127", 
+              "desc": "View Owner", 
+              "intent": "find who runs the channel"
+            }
+          }
+        },
+        "Person": {
+          "type_filter": ["Q5"],
+          "actions": {
+            "view_channel": {
+              "target": "Channel",
+              "relation": "reverse_P127",
+              "desc": "View Channel",
+              "intent": "find their youtube channel"
+            }
+          }
+        }
+      }
+    }
+  }
+}

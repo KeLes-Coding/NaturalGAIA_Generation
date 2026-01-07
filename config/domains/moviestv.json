@@ -1,0 +1,51 @@
+{
+  "apps": {
+    "IMDb": {
+      "description": "Movie & TV database.",
+      "entities": {
+        "Movie": {
+          "type_filter": ["Q11424", "Q5398426"],
+          "comment": "Root Types: Film, TV Series",
+          "constraints": ["P57", "P161"],
+          "actions": {
+            "check_director": {
+              "target": "Person",
+              "relation": "P57",
+              "desc": "View Director",
+              "intent": "find the director"
+            },
+            "check_cast": {
+              "target": "Person",
+              "relation": "P161",
+              "desc": "View Cast",
+              "intent": "find actors in this movie"
+            },
+            "check_composer": {
+              "target": "Person",
+              "relation": "P86",
+              "desc": "View Composer",
+              "intent": "find the composer"
+            }
+          }
+        },
+        "Person": {
+          "type_filter": ["Q5"],
+          "actions": {
+            "see_filmography": {
+              "target": "Movie",
+              "relation": "reverse_P161",
+              "desc": "Filmography",
+              "intent": "find movies they acted in"
+            },
+            "directed_movies": {
+              "target": "Movie",
+              "relation": "reverse_P57",
+              "desc": "Production Credits",
+              "intent": "find movies they directed"
+            }
+          }
+        }
+      }
+    }
+  }
+}
